@@ -1,32 +1,28 @@
-def write_xml(root_element, indent_size=2, xml_declaration=True):
+def write_xml(data, indent_size=2):
     """
-    Write an XML structure with attributes on separate lines
+    Convert JSON data to XML with each attribute on a new line
 
     Parameters:
-    - root_element: dict with keys:
-        - 'tag': element name (string)
-        - 'attributes': dict of attributes (optional)
-        - 'text': element text content (optional)
-        - 'children': list of child elements with same structure (optional)
-    - indent_size: number of spaces for each indentation level
-    - xml_declaration: whether to include XML declaration
+    - json_data: Dictionary representing JSON data
+    - indent_size: Number of spaces for each indentation level
 
     Returns: formatted XML string
     """
     result = []
+    result.append('<?xml version="1.0" encoding="UTF-8"?>')
 
-    if xml_declaration:
-        result.append('<?xml version="1.0" encoding="UTF-8"?>')
-
-    def _write_element(element, indent_level=0):
-        indent = " " * indent_level
+    def _process_element(element_name, element_data, indent_level=0):
         lines = []
+        indent = "    " * indent_level
 
         # Start tag
-        tag_name = element['tag']
-        opening = f"{indent}<{tag_name}"
+        opening = f"{indent}<{element_name}"
 
-        attributes = element.get('attributes', {})
+        # Check for attributes
+        attributes = {}
+        if "@attributes" in element_data:
+            attributes = element_data["@attributes"]
+
         if attributes:
             lines.append(opening)
             attr_indent = " " * len(opening)
@@ -34,68 +30,44 @@ def write_xml(root_element, indent_size=2, xml_declaration=True):
             # Add each attribute on a new line
             attr_items = list(attributes.items())
             for i, (key, value) in enumerate(attr_items):
-                # Escape attribute values
-                escaped_value = str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"",
-                                                                                                                   "&quot;")
-                attr_line = f"{attr_indent}{key}=\"{escaped_value}\""
-                if i == len(attr_items) - 1:  # Last attribute
-                    attr_line += ">"
-                lines.append(attr_line)
+                lines.append(f"{attr_indent}{key}=\"{value}\"")
+
+            # Close the opening tag after the last attribute
+            lines[-1] += ">"
         else:
             lines.append(f"{opening}>")
 
-        # Element content
-        if 'text' in element and element['text']:
-            # Escape text content
-            text = str(element['text'])
-            escaped_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            lines.append(f"{indent}{' ' * indent_size}{escaped_text}")
+        # Process child elements and text content
+        for key, value in element_data.items():
+            # Skip attributes as they are already processed
+            if key == "@attributes":
+                continue
 
-        # Process children
-        children = element.get('children', [])
-        for child in children:
-            child_lines = _write_element(child, indent_level + indent_size)
-            lines.extend(child_lines)
+            # Handle comments
+            elif key == "Comment":
+                lines.append(f"{indent}{' ' * indent_size}<!-- {value} -->")
+
+            # Handle arrays/lists
+            elif isinstance(value, list):
+                for item in value:
+                    child_lines = _process_element(key, item, indent_level + indent_size)
+                    lines.extend(child_lines)
+
+            # Handle nested objects
+            elif isinstance(value, dict):
+                child_lines = _process_element(key, value, indent_level + indent_size)
+                lines.extend(child_lines)
+
+            # Handle simple values (text content)
+            else:
+                lines.append(f"{indent}{' ' * indent_size}{value}")
 
         # End tag
-        lines.append(f"{indent}</{tag_name}>")
-
+        lines.append(f"{indent}</{element_name}>")
         return lines
 
-    result.extend(_write_element(root_element))
+    # Process the root element (there should be only one)
+    root_name = next(iter(data))
+    result.extend(_process_element(root_name, data[root_name]))
+
     return "\n".join(result)
-
-
-# Example usage
-if __name__ == "__main__":
-    # Example XML structure
-    document = {
-        'tag': 'root',
-        'attributes': {
-            'version': '1.0'
-        },
-        'children': [
-            {
-                'tag': 'person',
-                'attributes': {
-                    'id': '123',
-                    'firstName': 'John',
-                    'lastName': 'Doe',
-                    'age': '30',
-                    'email': 'john.doe@example.com'
-                },
-                'text': 'This is a person element'
-            },
-            {
-                'tag': 'metadata',
-                'attributes': {
-                    'created': '2025-04-10',
-                    'modified': '2025-04-10',
-                    'author': 'XMLWriter'
-                }
-            }
-        ]
-    }
-
-    xml_output = write_xml(document)
-    print(xml_output)
